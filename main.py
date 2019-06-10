@@ -1,5 +1,7 @@
-import pyUDMX
+import pyudmx_dep as pyUDMX
 import tkinter
+
+from time import sleep
 
 
 class USBInterface:
@@ -35,6 +37,8 @@ class GUI:
         self.preset_name_list = []
         self.preset_index = 0
         self.preset_entry = None
+        self.reset_button = None
+        self.blackout_button = None
         self.preset_entry_text = None
         self.preset_box_length = 5
         self.preset_saver = None
@@ -46,6 +50,8 @@ class GUI:
         self.manual_entry_list = []
         self.entry_list = []
         self.preset_slider_list = []
+        self.blackout_value = False
+        self.blackout_value_previous = False
         self.slider_amount = 24
         self.grand_master = None
         self.grand_master_manual_entry = None
@@ -64,23 +70,41 @@ class GUI:
             self.manual_entry_list[i].trace('w', self.limit_manual_entry_size)
             text_field = tkinter.Entry(self.master, validate='key', validatecommand=validate_command, width=3,
                                        textvariable=self.manual_entry_list[i])
-            text_field.bind("<BackSpace>", self.backspaceHandle)
+            text_field.bind("<BackSpace>", self.backspace_handle)
             text_field.grid(row=0, column=i)
             self.entry_list.append(text_field)
             self.slider_list.append(tkinter.Scale(self.master, from_=255, to=0, width=20, length=200))
             self.slider_list[i].grid(row=1, column=i, ipadx=5)
-            label = tkinter.Label(self.master, text=str(i+1))
-            label.grid(row=2, column=i)
+            button = tkinter.Button(self.master, text=str(i+1))
+            button.grid(row=2, column=i)
+            button.bind('<ButtonPress-1>', lambda y,number=i+1: self.trigger_light(number, True))
+            button.bind('<ButtonRelease-1>', lambda y,number=i+1: self.trigger_light(number, False))
         self.grand_master = tkinter.Scale(self.master, from_=255, to=0, width=25, length=200)
         self.grand_master.set(255)
         self.grand_master.grid(row=1, column=self.slider_amount+1, ipadx=10)
-        label = tkinter.Label(self.master, text=str("GM"))
-        label.grid(row=2, column=self.slider_amount+1)
+        self.blackout_button = tkinter.Label(self.master, text=str("BlackOut"))
+        self.blackout_button.grid(row=2, column=self.slider_amount+1)
+        self.blackout_button.bind('<ButtonPress-1>', lambda y: self.blackout())
+        self.blackout_button.config(relief="raised")
         self.grand_master_manual_entry = tkinter.Entry(self.master, validate='key', validatecommand=validate_command,
                                                        width=3, textvariable=self.grand_master_manual_stringvar)
-        self.grand_master_manual_entry.bind("<BackSpace>", self.backspaceHandle)
+        self.grand_master_manual_entry.bind("<BackSpace>", self.backspace_handle)
         self.grand_master_manual_entry.grid(row=0, column=self.slider_amount+1)
         self.make_preset_buttons(validate_command)
+
+    def blackout(self):
+        self.blackout_value = not self.blackout_value
+        if self.blackout_value:
+            self.blackout_button.config(relief="sunken")
+        else:
+            self.blackout_button.config(relief="raised")
+
+    def trigger_light(self, number, toggle):
+        if toggle:
+            self.interface.send_signal(number, 255 * self.grand_master.get() // 255)
+        else:
+            value = self.slider_list[number-1].get() * self.grand_master.get() // 255
+            self.interface.send_signal(number, value)
 
     def make_preset_buttons(self, validate_command):
         self.left_button = tkinter.Button(self.master, text="<", command=self.button_left)
@@ -90,7 +114,7 @@ class GUI:
         self.preset_entry = tkinter.Entry(self.master, validate='key', validatecommand=validate_command,
                                           width=self.preset_box_length, textvariable=self.preset_entry_text)
         self.preset_entry.grid(row=3, column=1)
-        self.preset_entry.bind("<BackSpace>", self.backspaceHandle)
+        self.preset_entry.bind("<BackSpace>", self.backspace_handle)
         self.left_button = tkinter.Button(self.master, text=">", command=self.button_right)
         self.left_button.grid(row=3, column=2)
         self.preset_saver = tkinter.Button(self.master, text="Save", command=self.save_preset)
@@ -99,8 +123,10 @@ class GUI:
         self.preset_saver.grid(row=4, column=1)
         self.clear_button = tkinter.Button(self.master, text="Clear", command=self.clear_preset)
         self.clear_button.grid(row=4, column=2)
-        self.copy_buton = tkinter.Button(self.master, text="Copy", command=self.clear_preset)
-
+        self.copy_button = tkinter.Button(self.master, text="Copy", command=self.clear_preset)
+        self.copy_button.grid(row=3, column=6, columnspan=1, rowspan=2)
+        self.paste_button = tkinter.Button(self.master, text="Paste", command=self.clear_preset)
+        self.paste_button.grid(row=3, column=7, columnspan=1, rowspan=2)
         for i in range(self.slider_amount):
 
             self.preset_slider_list.append(tkinter.Scale(self.master, from_=255, to=0, width=20, length=100))
@@ -112,6 +138,8 @@ class GUI:
         self.name_field = tkinter.Entry(self.master, width=25, textvariable=self.name_field_text)
         self.name_field.config(justify=tkinter.RIGHT)
         self.name_field.grid(row=3, column=3, columnspan=3, rowspan=2)
+        self.reset_button = tkinter.Button(self.master, text="Fader Reset", command=self.fader_reset)
+        self.reset_button.grid(row=3, column=8, columnspan=2, rowspan=2)
         try:
             if not any(self.preset_list[self.preset_index]):
                 self.preset_entry.config({"background": "Red"})
@@ -119,6 +147,13 @@ class GUI:
                 self.preset_entry.config({"background": "Green"})
         except IndexError:
             self.preset_entry.config({"background": "Red"})
+
+    def fader_reset(self):
+        for i in range(len(self.slider_list)):
+            slider = self.slider_list[i]
+            self.manual_entry_list[i].set(0)
+            slider.set(0)
+
 
     def update_preset_sliders(self):
         try:
@@ -209,25 +244,48 @@ class GUI:
             self.slider_list[i].set(int(slider_list_values[i]))
 
     def get_slider_information(self):
-        slider_list_values = [slider.get() for slider in self.slider_list]
-        slider_list_values.append(self.grand_master.get())
-        if int(self.grand_master.get()) != int(self.grand_master_manual_entry.get()):
-            self.grand_master_manual_stringvar.set(self.grand_master.get())
-        if self.last_slider_list_values != slider_list_values:
-            for i in range(len(self.slider_list)):
-                slider = self.slider_list[i]
-                if int(slider.get()) != int(self.manual_entry_list[i].get()):
-                    self.manual_entry_list[i].set(slider.get())
-                value = slider.get() * self.grand_master.get() // 255
-                # self.interface.send_signal(self.slider_list.index(slider) + 1, value)
-            self.last_slider_list_values = slider_list_values
-        if self.count > 10:
-            self.interface.reopen()
-            self.count = 0
-        self.count += 1
-        self.master.after(200, self.get_slider_information)
+        if self.blackout_value != self.blackout_value_previous:
+            if self.blackout_value:
+                for i in range(len(self.slider_list)):
+                    self.interface.send_signal(i + 1, 0)
+            else:
+                slider_list_values = [slider.get() for slider in self.slider_list]
+                slider_list_values.append(self.grand_master.get())
+                if int(self.grand_master.get()) != int(self.grand_master_manual_entry.get()):
+                    self.grand_master_manual_stringvar.set(self.grand_master.get())
+                for i in range(len(self.slider_list)):
+                    slider = self.slider_list[i]
+                    if int(slider.get()) != int(self.manual_entry_list[i].get()):
+                        self.manual_entry_list[i].set(slider.get())
+                    value = slider.get() * self.grand_master.get() // 255
+                    self.interface.send_signal(i + 1, value)
+                self.last_slider_list_values = slider_list_values
+                if self.count > 10:
+                    self.interface.reopen()
+                    self.count = 0
+                self.count += 1
+                self.master.after(1, self.get_slider_information)
+            self.blackout_value_previous = self.blackout_value
+        elif not self.blackout_value:
+            slider_list_values = [slider.get() for slider in self.slider_list]
+            slider_list_values.append(self.grand_master.get())
+            if int(self.grand_master.get()) != int(self.grand_master_manual_entry.get()):
+                self.grand_master_manual_stringvar.set(self.grand_master.get())
+            if self.last_slider_list_values != slider_list_values:
+                for i in range(len(self.slider_list)):
+                    slider = self.slider_list[i]
+                    if int(slider.get()) != int(self.manual_entry_list[i].get()):
+                        self.manual_entry_list[i].set(slider.get())
+                    value = slider.get() * self.grand_master.get() // 255
+                    self.interface.send_signal(i + 1, value)
+                self.last_slider_list_values = slider_list_values
+            if self.count > 10:
+                self.interface.reopen()
+                self.count = 0
+            self.count += 1
+        self.master.after(1, self.get_slider_information)
 
-    def backspaceHandle(self, event):
+    def backspace_handle(self, event):
         entry_field = self.master.focus_get()
         value = str(entry_field.get())
         if entry_field == self.grand_master_manual_entry:
@@ -302,4 +360,3 @@ if __name__ == '__main__':
     usbInterface = USBInterface()
     gui = GUI(usbInterface)
     gui.run()
-
