@@ -1,7 +1,37 @@
-import pyudmx_dep as pyUDMX
+import pyUDMX
 import tkinter
+import json
+import os
 
-from time import sleep
+
+class StorageHandler:
+    def __init__(self):
+        if not os.path.exists('storage.json'):
+            self.storage_dict = {'presets': dict()}
+            with open('storage.json', 'w') as storage_file:
+                storage_file.write(json.dumps(self.storage_dict))
+        else:
+            self.read_storage()
+
+    def write_storage(self):
+        with open('storage.json', 'w') as storage_file:
+            storage_file.write(json.dumps(self.storage_dict))
+
+    def read_storage(self):
+        with open('storage.json', 'r') as storage_file:
+            self.storage_dict = json.loads(storage_file.read())
+
+    def get_storage(self):
+        self.read_storage()
+        return self.storage_dict
+
+    def write_preset_dict(self, preset_dict):
+        self.storage_dict['presets'] = preset_dict
+        self.write_storage()
+
+    def get_preset_dict(self):
+        self.read_storage()
+        return self.storage_dict['presets']
 
 
 class USBInterface:
@@ -29,12 +59,15 @@ class USBInterface:
 
 
 class GUI:
-    def __init__(self, interface):
+    def __init__(self, interface, storage):
+        self.storage = storage
         self.interface = interface
         self.master = tkinter.Tk()
+        self.master.protocol("WM_DELETE_WINDOW", self.close_window)
         self.master.title("Lighting Desk")
-        self.preset_list = []
         self.preset_name_list = []
+        self.preset_list = []
+        self.load_preset_dict(self.storage.get_preset_dict())
         self.preset_index = 0
         self.preset_entry = None
         self.reset_button = None
@@ -58,9 +91,57 @@ class GUI:
         self.grand_master_manual_stringvar = tkinter.StringVar(value='255')
         self.grand_master_manual_stringvar.trace('w', self.limit_manual_entry_size)
         self.left_button = None
+        self.copy_button = None
+        self.paste_button = None
         self.create_lighting_desk()
         self.last_slider_list_values = []
         self.count = 0
+        self.update_preset_sliders()
+        pad = 3
+        self._geom = '200x200+0+0'
+        self.master.geometry("{0}x{1}+0+0".format(
+            self.master.winfo_screenwidth() - pad, self.master.winfo_screenheight() - pad))
+        self.master.bind('<Escape>', self.shrink_window)
+
+    def shrink_window(self):
+        geom = self.master.winfo_geometry()
+        self.master.geometry(self._geom)
+        self._geom = geom
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.save_preset_dict()
+
+    def close_window(self):
+        self.save_preset_dict()
+        self.master.destroy()
+        exit()
+
+    def make_preset_dict(self):
+        preset_dictionary = {}
+        for i in range(len(self.preset_name_list)):
+            if self.preset_name_list[i] is '':
+                name = str(i)
+            else:
+                name = self.preset_name_list[i]
+            preset_dictionary[name] = (i, self.preset_list[i])
+        return preset_dictionary
+
+    def save_preset_dict(self):
+        preset_dict = self.make_preset_dict()
+        self.storage.write_preset_dict(preset_dict)
+
+    def load_preset_dict(self, preset_dictionary):
+        name_list = [None] * len(preset_dictionary.keys())
+        preset_list = [None] * len(preset_dictionary.keys())
+        for name in preset_dictionary.keys():
+            index = preset_dictionary[name][0]
+            if name == str(index):
+                name_list[index] = ''
+            else:
+                name_list[index] = name
+            preset_list[index] = preset_dictionary[name][1]
+        self.preset_name_list = name_list
+        self.preset_list = preset_list
 
     def create_lighting_desk(self):
         validate_command = (self.master.register(self.integer_verify),
@@ -154,7 +235,6 @@ class GUI:
             self.manual_entry_list[i].set(0)
             slider.set(0)
 
-
     def update_preset_sliders(self):
         try:
             slider_list_values = self.preset_list[self.preset_index]
@@ -169,10 +249,9 @@ class GUI:
 
     def button_left(self):
         if self.preset_index == 0:
-            try:
-                self.preset_index = self.preset_list.index(self.preset_list[-1])
-            except IndexError:
-                self.preset_index = 0
+            if len(self.preset_list) > 1:
+                self.preset_index = len(self.preset_list) - 1
+            else: self.preset_index = 0
         else:
             self.preset_index -= 1
         if int(self.preset_entry_text.get()) != self.preset_index:
@@ -187,7 +266,11 @@ class GUI:
         self.update_preset_sliders()
 
     def button_right(self):
-        self.preset_index += 1
+        maximum_number = '9' * self.preset_box_length
+        if self.preset_index + 1 > int(maximum_number):
+            self.preset_index = 0
+        else:
+            self.preset_index += 1
         if int(self.preset_entry_text.get()) != self.preset_index:
             self.preset_entry_text.set(self.preset_index)
         try:
@@ -219,10 +302,13 @@ class GUI:
         except IndexError:
             self.preset_entry.config({"background": "Red"})
         self.update_preset_sliders()
+        self.save_preset_dict()
 
     def clear_preset(self):
         try:
             self.preset_list[self.preset_index] = [0] * self.slider_amount
+            self.preset_name_list[self.preset_index] = ''
+            self.name_field_text.set("")
         except IndexError:
             pass
         try:
@@ -358,5 +444,6 @@ class GUI:
 
 if __name__ == '__main__':
     usbInterface = USBInterface()
-    gui = GUI(usbInterface)
+    storageHandler = StorageHandler()
+    gui = GUI(usbInterface, storageHandler)
     gui.run()
