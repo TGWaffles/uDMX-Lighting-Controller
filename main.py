@@ -3,6 +3,8 @@ import tkinter
 import json
 import os
 
+from tkinter import ttk
+
 
 class StorageHandler:
     def __init__(self):
@@ -73,9 +75,13 @@ class GUI:
         self.storage = storage
         self.interface = interface
         self.master = tkinter.Tk()
+        self.tabs = tkinter.ttk.Notebook(self.master)
         self.master.protocol("WM_DELETE_WINDOW", self.close_window)
         self.master.title("Lighting Desk")
-        self.editor_frame = tkinter.Frame()
+        self.editor_frame = tkinter.Frame(self.tabs)
+        self.tabs.add(self.editor_frame, text="Editor")
+        self.preset_frame = tkinter.Frame(self.tabs)
+        self.tabs.add(self.preset_frame, text="Presets")
         self.preset_name_list = []
         self.preset_list = []
         self.load_preset_dict(self.storage.get_preset_dict())
@@ -102,7 +108,7 @@ class GUI:
         self.master.geometry("{0}x{1}+0+0".format(
             self.master.winfo_screenwidth() - pad, self.master.winfo_screenheight() - pad))
         self.master.bind('<Escape>', self.shrink_window)
-        self.editor_frame.grid(row=1, column=0)
+        self.tabs.pack()
 
     def shrink_window(self):
         geom = self.master.winfo_geometry()
@@ -436,11 +442,13 @@ class GUI:
                     self.preset_entry.config({"background": "Red"})
                 self.update_preset_sliders()
 
+    def create_preset_frame(self):
+        ...  # TODO
 
     def run(self):
         self.get_slider_information()
         self.master.mainloop()
-
+    
 
 if __name__ == '__main__':
     usbInterface = USBInterface()
