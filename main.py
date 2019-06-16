@@ -9,7 +9,7 @@ from tkinter import ttk
 class StorageHandler:
     def __init__(self):
         if not os.path.exists('storage.json'):
-            self.storage_dict = {'presets': dict()}
+            self.storage_dict = {'presets': dict(), 'keys': list()}
             with open('storage.json', 'w') as storage_file:
                 storage_file.write(json.dumps(self.storage_dict))
         else:
@@ -43,7 +43,15 @@ class StorageHandler:
 
     def get_preset_dict(self):
         self.read_storage()
-        return self.storage_dict['presets']
+        return self.storage_dict.get('presets')
+
+    def get_lighting_keys(self):
+        self.read_storage()
+        return self.storage_dict.get('keys', [])
+
+    def write_lighting_keys(self, keys_dict):
+        self.storage_dict['keys'] = keys_dict
+        self.write_storage()
 
 
 class USBInterface:
@@ -52,7 +60,7 @@ class USBInterface:
         self.device.open()
 
     def send_signal(self, channel, value):
-        ...  # self.device.send_single_value(channel, value)
+        self.device.send_single_value(channel, value)
 
     def set_devices(self, **kwargs):
         channels = [int(channel) for channel in kwargs.keys()]
@@ -74,6 +82,7 @@ class GUI:
     def __init__(self, interface, storage):
         self.storage = storage
         self.interface = interface
+        self.slider_amount = 24
         self.master = tkinter.Tk()
         self.tabs = tkinter.ttk.Notebook(self.master)
         self.master.protocol("WM_DELETE_WINDOW", self.close_window)
@@ -82,6 +91,19 @@ class GUI:
         self.tabs.add(self.editor_frame, text="Editor")
         self.preset_frame = tkinter.Frame(self.tabs)
         self.tabs.add(self.preset_frame, text="Presets")
+        self.key_editor_mode = False
+        self.key_editor_frame = tkinter.Frame(self.master)
+        self.key_display_frame = tkinter.Frame(self.master)
+        self.keys = []
+        self.keys_text = []
+        keys_list = self.storage.get_lighting_keys()
+        if len(keys_list) == 0:
+            self.initialise_keys_list()
+        else:
+            self.load_keys_list(keys_list)
+        self.create_keys_editor()
+        self.create_keys_display()
+        self.key_display_frame.tkraise()
         self.preset_name_list = []
         self.preset_list = []
         self.load_preset_dict(self.storage.get_preset_dict())
@@ -94,7 +116,6 @@ class GUI:
         self.entry_list = []
         self.preset_slider_list = []
         self.blackout_value = self.blackout_value_previous = False
-        self.slider_amount = 24
         self.grand_master = self.grand_master_manual_entry = None
         self.grand_master_manual_stringvar = tkinter.StringVar(value='255')
         self.grand_master_manual_stringvar.trace('w', self.limit_manual_entry_size)
@@ -109,6 +130,20 @@ class GUI:
             self.master.winfo_screenwidth() - pad, self.master.winfo_screenheight() - pad))
         self.master.bind('<Escape>', self.shrink_window)
         self.tabs.pack()
+
+    def initialise_keys_list(self):
+        for i in range(self.slider_amount):
+            self.keys_text.append(tkinter.StringVar(value=''))
+
+    def load_keys_list(self, keys_list):
+        for key in keys_list:
+            self.keys_text.append(tkinter.StringVar(value=key))
+
+    def write_keys_list(self):
+        keys_text_list = []
+        for key in self.keys_text:
+            keys_text_list.append(key.get())
+        self.storage.write_lighting_keys(keys_text_list)
 
     def shrink_window(self):
         geom = self.master.winfo_geometry()
@@ -179,6 +214,42 @@ class GUI:
         self.grand_master_manual_entry.bind("<BackSpace>", self.backspace_handle)
         self.grand_master_manual_entry.grid(row=0, column=self.slider_amount+1)
         self.make_editor_preset_buttons(validate_command)
+
+    def create_keys_editor(self):
+        for i in range(self.slider_amount):
+            key_label = tkinter.Label(self.key_editor_frame, text="{}:".format(i+1))
+            text_field = tkinter.Entry(self.key_editor_frame, width=10, textvariable=self.keys_text[i])
+            if i < self.slider_amount // 2:
+                column = 0
+            else:
+                column = 2
+            key_label.grid(row=i, column=column)
+            text_field.grid(row=i, column=column+1)
+        save_button = tkinter.Button(self.key_editor_frame, text='Save', command=self.swap_keys_mode)
+        save_button.grid(row=i+1, column=3)
+        # self.key_editor_frame.grid(row=1, column=1)
+
+    def create_keys_display(self):
+        for i in range(self.slider_amount):
+            key_text = "{}: {}".format(i+1, self.keys_text[i].get())
+            key = tkinter.Label(self.key_display_frame, text=key_text)
+            if i < self.slider_amount // 2:
+                column = 0
+            else:
+                column = 1
+            key.grid(row=i, column=column)
+        edit_button = tkinter.Button(self.key_display_frame, text='Edit', command=self.swap_keys_mode)
+        edit_button.grid(row=i+1, column=1)
+        # self.key_display_frame.grid(row=1, column=1)
+
+    def swap_keys_mode(self):
+        self.write_keys_list()
+        if self.key_editor_mode:
+            self.create_keys_display()
+            self.key_display_frame.tkraise()
+        else:
+            self.create_editor_frame()
+            self.key_editor_frame.tkraise()
 
     def blackout(self):
         self.blackout_value = not self.blackout_value
