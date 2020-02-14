@@ -87,13 +87,14 @@ class GUI:
         self.tabs = tkinter.ttk.Notebook(self.master)
         self.master.protocol("WM_DELETE_WINDOW", self.close_window)
         self.master.title("Lighting Desk")
-        self.editor_frame = tkinter.Frame(self.tabs)
-        self.tabs.add(self.editor_frame, text="Editor")
+        self.master_editor_frame = tkinter.Frame(self.tabs)
+        self.editor_frame = tkinter.Frame(self.master_editor_frame)
+        self.tabs.add(self.master_editor_frame, text="Editor")
         self.preset_frame = tkinter.Frame(self.tabs)
         self.tabs.add(self.preset_frame, text="Presets")
         self.key_editor_mode = False
-        self.key_editor_frame = tkinter.Frame(self.master)
-        self.key_display_frame = tkinter.Frame(self.master)
+        self.key_editor_frame = tkinter.Frame(self.master_editor_frame)
+        self.key_display_frame = tkinter.Frame(self.master_editor_frame)
         self.keys = []
         self.keys_text = []
         keys_list = self.storage.get_lighting_keys()
@@ -101,9 +102,8 @@ class GUI:
             self.initialise_keys_list()
         else:
             self.load_keys_list(keys_list)
-        self.create_keys_editor()
+        # self.create_keys_editor()
         self.create_keys_display()
-        self.key_display_frame.tkraise()
         self.preset_name_list = []
         self.preset_list = []
         self.load_preset_dict(self.storage.get_preset_dict())
@@ -129,6 +129,7 @@ class GUI:
         self.master.geometry("{0}x{1}+0+0".format(
             self.master.winfo_screenwidth() - pad, self.master.winfo_screenheight() - pad))
         self.master.bind('<Escape>', self.shrink_window)
+        self.editor_frame.grid(row=0, column=0)
         self.tabs.pack()
 
     def initialise_keys_list(self):
@@ -218,38 +219,56 @@ class GUI:
     def create_keys_editor(self):
         for i in range(self.slider_amount):
             key_label = tkinter.Label(self.key_editor_frame, text="{}:".format(i+1))
-            text_field = tkinter.Entry(self.key_editor_frame, width=10, textvariable=self.keys_text[i])
+            text_field = tkinter.Entry(self.key_editor_frame, width=50, textvariable=self.keys_text[i])
             if i < self.slider_amount // 2:
                 column = 0
+                row = i
             else:
                 column = 2
-            key_label.grid(row=i, column=column)
-            text_field.grid(row=i, column=column+1)
+                row = i - self.slider_amount // 2
+            key_label.grid(row=row, column=column)
+            text_field.grid(row=row, column=column+1)
+            self.keys.append(key_label)
+            self.keys.append(text_field)
         save_button = tkinter.Button(self.key_editor_frame, text='Save', command=self.swap_keys_mode)
-        save_button.grid(row=i+1, column=3)
-        # self.key_editor_frame.grid(row=1, column=1)
+        save_button.grid(row=row+1, column=3)
+        self.keys.append(save_button)
+        self.key_editor_frame.grid(row=1, column=0)
+        self.key_editor_mode = True
 
     def create_keys_display(self):
         for i in range(self.slider_amount):
-            key_text = "{}: {}".format(i+1, self.keys_text[i].get())
-            key = tkinter.Label(self.key_display_frame, text=key_text)
+            key_text = "{}: {}".format(i+1, self.keys_text[i].get()).ljust(50)
+            key = tkinter.Label(self.key_display_frame, text=key_text, anchor='w')
             if i < self.slider_amount // 2:
                 column = 0
+                row = i
             else:
                 column = 1
-            key.grid(row=i, column=column)
-        edit_button = tkinter.Button(self.key_display_frame, text='Edit', command=self.swap_keys_mode)
+                row = i - self.slider_amount // 2
+            key.grid(row=row, column=column)
+            self.keys.append(key)
+        edit_button = tkinter.Button(self.key_display_frame, text='Edit', command=self.swap_keys_mode, anchor='w')
         edit_button.grid(row=i+1, column=1)
-        # self.key_display_frame.grid(row=1, column=1)
+        self.keys.append(edit_button)
+        self.key_display_frame.grid(row=1, column=0)
+        self.key_editor_mode = False
+
+    def kill_all_keys(self):
+        for key in self.keys:
+            key.grid_forget()
+            key.destroy()
+        self.keys = []
+        self.key_editor_frame.grid_forget()
+        self.key_display_frame.grid_forget()
 
     def swap_keys_mode(self):
         self.write_keys_list()
+        self.kill_all_keys()
         if self.key_editor_mode:
             self.create_keys_display()
-            self.key_display_frame.tkraise()
         else:
-            self.create_editor_frame()
-            self.key_editor_frame.tkraise()
+            self.create_keys_editor()
 
     def blackout(self):
         self.blackout_value = not self.blackout_value
