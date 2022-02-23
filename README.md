@@ -1,2 +1,2 @@
-# uDMX-Lighting-CHS-Controller
-uDMX lighting platform for CHS's lighting system.
+# uDMX-Lighting-Controller
+uDMX lighting platform for a theatre lighting system.
